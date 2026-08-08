@@ -307,11 +307,11 @@ function spawnEnemy(type, forceR){
 function spawnWave(dt){
   G.spawnClock -= dt;
   if (G.spawnClock > 0) return;
-  G.spawnClock = Math.max(0.16, 1.05 - G.t / 300);
+  G.spawnClock = Math.max(0.3, 1.1 - G.t / 300);
 
   const roster = Object.keys(KIND).filter(k => k !== 'boss' && G.t >= KIND[k].from);
-  const n = 1 + Math.floor(G.t / 75);
-  for (let i = 0; i < n; i++) if (G.enemies.length < 260) spawnEnemy(pick(roster));
+  const n = 1 + Math.floor(G.t / 130);
+  for (let i = 0; i < n; i++) if (G.enemies.length < 160) spawnEnemy(pick(roster));
 
   if (G.t >= G.bossAt){
     G.bossAt += 150;
