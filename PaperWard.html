@@ -227,7 +227,13 @@ const ARMS = {
   seal:{ glyph:'封', name:'봉인', max:5, kind:'passive',
     desc:l => `잡귀의 이동 속도 ${l * 7}% 감소` },
   mirror:{ glyph:'返', name:'반사 부적', max:5, kind:'passive',
-    desc:l => `받은 피해의 ${l * 16}%를 되돌린다` }
+    desc:l => `받은 피해의 ${l * 16}%를 되돌린다` },
+  illusion:{ glyph:'幻', name:'환영', max:5, kind:'passive',
+    desc:l => `환영이 따라다니며 적 ${25 + l * 10}%의 시선을 끈다` },
+  recovery:{ glyph:'癒', name:'회복 부적', max:5, kind:'passive',
+    desc:l => `일정 시간마다 체력 ${4 + l * 3} 회복` },
+  twin:{ glyph:'孿', name:'쌍생', max:5, kind:'arm',
+    desc:l => `투사체가 적중 후 두 갈래로 갈라진다 · 피해 ${48 + l * 4}%` }
 };
 
 /* ═══ 잡귀 도감 ═════════════════════════════════════════ */
@@ -246,9 +252,9 @@ function reset(){
   P = { x:0, y:0, r:11, face:{x:1,y:0},
         hp:100, maxHp:100, spd:132, armor:0,
         lv:1, xp:0, need:8, pickup:78,
-        dmgMul:1, cdMul:1, invuln:0, wardT:0,
+        dmgMul:1, cdMul:1, invuln:0, wardT:0, healT:0,
         enemySlow:0, reflect:0,
-        arms:{}, passives:{} };
+        illusion:{x:0, y:0, wob:0}, arms:{}, passives:{} };
   P.arms.bujeok = { lv:1, t:0 };
 
   G = { phase:'title', t:0, kills:0, enemies:[], shots:[], gems:[], fx:[],
@@ -307,7 +313,7 @@ function spawnEnemy(type, forceR){
     type, x:P.x + Math.cos(a) * R, y:P.y + Math.sin(a) * R,
     r:k.r, hp:k.hp * d, max:k.hp * d, spd:k.spd * (0.9 + Math.random() * 0.2),
     dmg:k.dmg, tone:k.tone, xp:k.xp, flash:0, cd:{},
-    wob:rand(0, 6.28), kx:0, ky:0
+    wob:rand(0, 6.28), kx:0, ky:0, lureT:0, targetIllusion:false
   });
 }
 
@@ -451,23 +457,46 @@ function runArms(dt){
 }
 
 function runPassives(dt){
-  const lv = P.passives.ward || 0;
-  if (!lv) return;
+  const illusionLv = P.passives.illusion || 0;
+  if (illusionLv){
+    const a = P.illusion;
+    a.wob += dt * 2.3;
+    const tx = P.x + Math.cos(a.wob) * 48, ty = P.y + Math.sin(a.wob) * 48;
+    const follow = 1 - Math.exp(-dt * 6);
+    a.x += (tx - a.x) * follow;
+    a.y += (ty - a.y) * follow;
+  }
 
-  P.wardT -= dt;
-  if (P.wardT > 0) return;
-
-  P.wardT = Math.max(2.8, (5.4 - lv * 0.35) * P.cdMul);
-  const R = 74 + lv * 9;
-  for (const e of G.enemies){
-    if (e.dead) continue;
-    const dx = e.x - P.x, dy = e.y - P.y, d = Math.hypot(dx, dy) || 1;
-    if (d < R + e.r){
-      const force = (R + e.r - d) * 3 + 80;
-      hurt(e, (3 + lv * 2) * P.dmgMul, dx / d * force, dy / d * force);
+  const recoveryLv = P.passives.recovery || 0;
+  if (recoveryLv){
+    P.healT -= dt;
+    if (P.healT <= 0){
+      P.healT = Math.max(2.5, (8 - recoveryLv * 0.7) * P.cdMul);
+      if (P.hp < P.maxHp){
+        const amount = 4 + recoveryLv * 3;
+        P.hp = Math.min(P.maxHp, P.hp + amount);
+        G.fx.push({ kind:'num', x:P.x, y:P.y - 22, v:amount, life:0.6, t:0, heal:true });
+      }
     }
   }
-  G.fx.push({ kind:'ring', x:P.x, y:P.y, r:R, life:0.35, t:0 });
+
+  const wardLv = P.passives.ward || 0;
+  if (wardLv){
+    P.wardT -= dt;
+    if (P.wardT <= 0){
+      P.wardT = Math.max(2.8, (5.4 - wardLv * 0.35) * P.cdMul);
+      const R = 74 + wardLv * 9;
+      for (const e of G.enemies){
+        if (e.dead) continue;
+        const dx = e.x - P.x, dy = e.y - P.y, d = Math.hypot(dx, dy) || 1;
+        if (d < R + e.r){
+          const force = (R + e.r - d) * 3 + 80;
+          hurt(e, (3 + wardLv * 2) * P.dmgMul, dx / d * force, dy / d * force);
+        }
+      }
+      G.fx.push({ kind:'ring', x:P.x, y:P.y, r:R, life:0.35, t:0 });
+    }
+  }
 }
 
 /* ═══ 성장 ══════════════════════════════════════════════ */
@@ -573,7 +602,16 @@ function update(dt){
   const cullR = (Math.hypot(VW, VH) / 2 + 420) ** 2;
   for (const e of G.enemies){
     if (e.dead) continue;
-    const dx = P.x - e.x, dy = P.y - e.y;
+    let target = P;
+    if (P.passives.illusion){
+      e.lureT -= dt;
+      if (e.lureT <= 0){
+        e.lureT = rand(0.7, 1.4);
+        e.targetIllusion = Math.random() < Math.min(0.75, 0.25 + P.passives.illusion * 0.1);
+      }
+      if (e.targetIllusion) target = P.illusion;
+    }
+    const dx = target.x - e.x, dy = target.y - e.y;
     const m = Math.hypot(dx, dy) || 1;
     const speed = e.spd * (1 - P.enemySlow);
     e.wob += dt * 5;
@@ -619,6 +657,19 @@ function update(dt){
       if (e.dead) continue;
       if ((e.x-s.x)**2 + (e.y-s.y)**2 < (e.r + s.r) ** 2 && canHit(e, 'shot' + (s.uid || (s.uid = Math.random())), 9)){
         hurt(e, s.dmg, s.vx * 0.18, s.vy * 0.18);
+        if (P.arms.twin && !s.split){
+          const lv = P.arms.twin.lv;
+          const ang = Math.atan2(s.vy, s.vx), speed = Math.hypot(s.vx, s.vy) * 0.86;
+          const splitDmg = s.dmg * (0.48 + lv * 0.04);
+          s.split = true;
+          for (const side of [-1, 1]){
+            const splitAng = ang + side * 0.3;
+            G.shots.push({ kind:s.kind, x:s.x, y:s.y,
+              vx:Math.cos(splitAng) * speed, vy:Math.sin(splitAng) * speed,
+              r:Math.max(5, s.r * 0.8), dmg:splitDmg, pierce:0,
+              life:Math.min(s.life, 0.72), spin:s.spin, split:true });
+          }
+        }
         if (s.pierce-- <= 0){ s.dead = true; break; }
       }
     }
@@ -750,6 +801,19 @@ function draw(){
     }
   }
 
+  // 환영
+  if (P.passives.illusion){
+    const p = toS(P.illusion.x, P.illusion.y);
+    ctx.save();
+    ctx.globalAlpha = 0.58;
+    ctx.fillStyle = '#2E6A54';
+    ctx.beginPath(); ctx.arc(p.x, p.y, 11, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = '#191712'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#E4D9B8'; ctx.font = '16px "Nanum Myeongjo", serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('幻', p.x, p.y);
+    ctx.restore();
+  }
+
   // 날아가는 것
   for (const s of G.shots){
     const p = toS(s.x, s.y);
@@ -788,7 +852,8 @@ function draw(){
     const p = toS(f.x, f.y), k = 1 - f.t / f.life;
     if (f.kind === 'num'){
       ctx.font = '600 15px ui-monospace, Menlo, monospace';
-      ctx.fillStyle = f.mine ? `rgba(176,51,42,${k})` : `rgba(25,23,18,${k})`;
+      ctx.fillStyle = f.heal ? `rgba(46,106,84,${k})`
+        : f.mine ? `rgba(176,51,42,${k})` : `rgba(25,23,18,${k})`;
       ctx.fillText(f.v, p.x, p.y - (1 - k) * 26);
     }
     if (f.kind === 'toast'){
