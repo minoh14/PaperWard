@@ -1,0 +1,830 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>부적 — 잡귀 퇴치</title>
+<style>
+  :root{
+    --paper:#D6C8A0;
+    --paper-lit:#E4D9B8;
+    --paper-dark:#B9A87C;
+    --ink:#191712;
+    --cinnabar:#B0332A;
+    --cinnabar-lit:#D4544A;
+    --jade:#2E6A54;
+    --gold:#9C7A2A;
+    --font-display:"Nanum Myeongjo","AppleMyungjo","Batang","바탕",serif;
+    --font-body:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+    --font-data:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:#14120E;
+    color:var(--ink);
+    font-family:var(--font-body);
+    display:flex;justify-content:center;align-items:flex-start;
+    min-height:100vh;padding:14px;
+    -webkit-user-select:none;user-select:none;
+  }
+  .frame{width:100%;max-width:980px;position:relative}
+
+  /* ── 화면 ─────────────────────────── */
+  .stage{
+    position:relative;
+    aspect-ratio:8/5;
+    border:2px solid var(--ink);
+    box-shadow:0 0 0 6px #14120E, 0 0 0 7px rgba(176,51,42,.5);
+    overflow:hidden;
+    background:var(--paper);
+    touch-action:none;
+  }
+  canvas{display:block;width:100%;height:100%}
+
+  /* ── 상단 계기 ────────────────────── */
+  .hud{
+    position:absolute;inset:10px 12px auto 12px;
+    display:flex;flex-direction:column;gap:6px;
+    pointer-events:none;
+  }
+  .row{display:flex;align-items:center;gap:10px}
+  .clock{
+    font-family:var(--font-data);
+    font-size:22px;font-variant-numeric:tabular-nums;
+    color:var(--ink);letter-spacing:.04em;
+  }
+  .tally{
+    font-family:var(--font-data);font-size:11px;letter-spacing:.14em;
+    color:rgba(25,23,18,.6);
+  }
+  .bar{height:7px;border:1px solid var(--ink);background:rgba(25,23,18,.12);flex:1}
+  .bar i{display:block;height:100%;transition:width .12s linear}
+  .bar.hp i{background:var(--cinnabar)}
+  .bar.xp i{background:var(--jade)}
+  .lvtag{
+    font-family:var(--font-display);font-size:13px;letter-spacing:.1em;
+    min-width:52px;
+  }
+
+  /* ── 하단 소지 부적 ───────────────── */
+  .belt{
+    position:absolute;left:12px;bottom:10px;
+    display:flex;gap:5px;flex-wrap:wrap;max-width:70%;
+    pointer-events:none;
+  }
+  .slot{
+    width:38px;height:46px;
+    background:var(--paper-lit);
+    border:1px solid var(--ink);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:1px;
+  }
+  .slot b{font-family:var(--font-display);font-size:15px;font-weight:400;line-height:1}
+  .slot i{font-family:var(--font-data);font-size:9px;font-style:normal;color:var(--cinnabar)}
+  .slot.passive{background:var(--paper-dark)}
+
+  /* ── 겹장 ─────────────────────────── */
+  .veil{
+    position:absolute;inset:0;
+    background:rgba(20,18,14,.82);
+    display:flex;align-items:center;justify-content:center;
+    padding:20px;text-align:center;
+  }
+  .veil[hidden]{display:none}
+  .veil h2{
+    font-family:var(--font-display);
+    font-size:clamp(24px,4.6vw,36px);
+    color:var(--paper-lit);letter-spacing:.16em;margin-bottom:12px;
+  }
+  .veil p{
+    color:rgba(228,217,184,.72);font-size:14px;line-height:1.9;
+    max-width:42ch;margin:0 auto;
+  }
+  .veil kbd{
+    font-family:var(--font-data);font-size:11px;
+    border:1px solid rgba(228,217,184,.4);padding:1px 5px;
+  }
+  .go{
+    margin-top:22px;
+    font-family:var(--font-display);font-size:15px;letter-spacing:.28em;
+    background:var(--cinnabar);color:var(--paper-lit);
+    border:0;padding:13px 36px;cursor:pointer;
+  }
+  .go:hover{background:var(--cinnabar-lit)}
+  .go:focus-visible,.card:focus-visible{outline:2px solid var(--paper-lit);outline-offset:3px}
+
+  .ledger{
+    display:grid;grid-template-columns:repeat(2,1fr);gap:1px;
+    background:rgba(228,217,184,.2);border:1px solid rgba(228,217,184,.2);
+    max-width:330px;margin:20px auto 0;
+  }
+  .ledger div{background:#191712;padding:10px 14px;text-align:left}
+  .ledger dt{font-size:10px;letter-spacing:.18em;color:rgba(228,217,184,.5);margin-bottom:4px}
+  .ledger dd{font-family:var(--font-data);font-size:18px;color:var(--paper-lit)}
+
+  /* ── 승급 부적 ────────────────────── */
+  .picks{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:6px}
+  .card{
+    width:150px;min-height:190px;
+    background:var(--paper-lit);
+    border:1px solid var(--ink);
+    box-shadow:inset 0 0 0 3px var(--paper-lit), inset 0 0 0 4px rgba(176,51,42,.75);
+    padding:16px 12px;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+    font:inherit;color:var(--ink);text-align:center;
+    transition:transform .12s ease;
+  }
+  .card:hover{transform:translateY(-5px)}
+  .card .glyph{font-family:var(--font-display);font-size:38px;color:var(--cinnabar);line-height:1}
+  .card .name{font-family:var(--font-display);font-size:16px;letter-spacing:.06em}
+  .card .rank{font-family:var(--font-data);font-size:10px;letter-spacing:.16em;color:var(--gold)}
+  .card .desc{font-size:12px;line-height:1.65;color:#413B2E}
+
+  @media (max-width:560px){
+    .card{width:104px;min-height:0;padding:12px 8px}
+    .card .glyph{font-size:28px}
+    .card .desc{font-size:11px}
+    .slot{width:32px;height:38px}
+    .veil p{font-size:13px}
+  }
+  @media (prefers-reduced-motion:reduce){ .card{transition:none} }
+</style>
+
+<div class="frame">
+  <div class="stage" id="stage">
+    <canvas id="cv"></canvas>
+
+    <div class="hud">
+      <div class="row">
+        <span class="clock" id="clock">00:00</span>
+        <span class="tally" id="tally">퇴치 0</span>
+      </div>
+      <div class="row"><span class="lvtag" id="lvtag">1급</span><span class="bar xp"><i id="xpfill" style="width:0"></i></span></div>
+      <div class="row"><span class="lvtag">명줄</span><span class="bar hp"><i id="hpfill" style="width:100%"></i></span></div>
+    </div>
+
+    <div class="belt" id="belt"></div>
+    <div class="veil" id="veil"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════
+   부적 — 잡귀 퇴치 / a survivors-like on talisman paper
+   ═══════════════════════════════════════════════════════════ */
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const stage = document.getElementById('stage');
+const veil = document.getElementById('veil');
+const belt = document.getElementById('belt');
+
+const VW = 960, VH = 600;            // 논리 해상도
+const RUN_TIME = 600;                // 10분 생존 = 승천
+
+/* ── 화면 크기 ────────────────────────────────────────── */
+function fit(){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = VW * dpr; cv.height = VH * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+fit();
+window.addEventListener('resize', fit);
+
+/* ── 잡다한 도구 ──────────────────────────────────────── */
+const rand  = (a, b) => a + Math.random() * (b - a);
+const pick  = arr => arr[Math.floor(Math.random() * arr.length)];
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const dist2 = (a, b) => { const dx = a.x - b.x, dy = a.y - b.y; return dx*dx + dy*dy; };
+
+/* ═══ 무기 도감 ═════════════════════════════════════════ */
+const ARMS = {
+  bujeok:{ glyph:'符', name:'부적', max:6, kind:'arm',
+    desc:l => l===1 ? '가장 가까운 잡귀에게 부적을 날린다' : `날리는 부적 ${1+Math.floor(l/2)}장 · 피해 증가` },
+  bell:{ glyph:'鈴', name:'방울', max:6, kind:'arm',
+    desc:l => l===1 ? '몸 둘레를 도는 방울이 잡귀를 친다' : `방울 ${1+Math.floor((l+1)/2)}개 · 회전 강화` },
+  jin:{ glyph:'陣', name:'진', max:6, kind:'arm',
+    desc:l => l===1 ? '발밑에 진을 그려 닿는 것을 태운다' : '진의 범위와 화력이 넓어진다' },
+  bolt:{ glyph:'雷', name:'벼락', max:6, kind:'arm',
+    desc:l => l===1 ? '잡귀 머리 위로 벼락이 떨어진다' : `한 번에 ${1+Math.floor(l/2)}줄기 · 파장 확대` },
+  blade:{ glyph:'刃', name:'칼날', max:6, kind:'arm',
+    desc:l => l===1 ? '나아가는 쪽으로 칼날을 흩뿌린다' : `칼날 ${2+l}개 · 관통 강화` },
+
+  boot:{ glyph:'靴', name:'신발', max:5, kind:'passive', desc:()=>'걸음이 12% 빨라진다' },
+  life:{ glyph:'命', name:'명줄', max:5, kind:'passive', desc:()=>'명줄 20 늘고 그만큼 회복한다' },
+  cinn:{ glyph:'朱', name:'주사', max:5, kind:'passive', desc:()=>'모든 피해가 14% 오른다' },
+  wind:{ glyph:'風', name:'바람', max:5, kind:'passive', desc:()=>'재사용 대기가 9% 줄어든다' },
+  bowl:{ glyph:'鉢', name:'그릇', max:5, kind:'passive', desc:()=>'혼백을 끌어오는 범위가 30% 넓어진다' },
+  robe:{ glyph:'袍', name:'도포', max:4, kind:'passive', desc:()=>'받는 피해가 1씩 줄어든다' }
+};
+
+/* ═══ 잡귀 도감 ═════════════════════════════════════════ */
+const KIND = {
+  jap:  { hp:10,  spd:52, r:12, dmg:6,  xp:1, tone:'#2A2620', from:0   },
+  nal:  { hp:7,   spd:96, r:9,  dmg:5,  xp:1, tone:'#4A3A2C', from:60  },
+  mom:  { hp:46,  spd:34, r:19, dmg:12, xp:3, tone:'#191712', from:120 },
+  gak:  { hp:22,  spd:70, r:14, dmg:9,  xp:2, tone:'#3A2A38', from:240 },
+  boss: { hp:900, spd:44, r:38, dmg:22, xp:60, tone:'#120F0C', from:1e9 }
+};
+
+/* ═══ 상태 ══════════════════════════════════════════════ */
+let P, G, keys, drag;
+
+function reset(){
+  P = { x:0, y:0, r:11, face:{x:1,y:0},
+        hp:100, maxHp:100, spd:132, armor:0,
+        lv:1, xp:0, need:8, pickup:78,
+        dmgMul:1, cdMul:1, invuln:0,
+        arms:{}, passives:{} };
+  P.arms.bujeok = { lv:1, t:0 };
+
+  G = { phase:'title', t:0, kills:0, enemies:[], shots:[], gems:[], fx:[],
+        spawnClock:0, bossAt:150, orbit:0, shake:0 };
+
+  keys = {}; drag = null;
+  syncBelt();
+}
+
+/* ═══ 조작 ══════════════════════════════════════════════ */
+const KEYMAP = { ArrowUp:'u', ArrowDown:'d', ArrowLeft:'l', ArrowRight:'r',
+                 w:'u', s:'d', a:'l', d:'r', W:'u', S:'d', A:'l', D:'r' };
+
+addEventListener('keydown', e => {
+  if (e.key === 'Escape'){ togglePause(); return; }
+  const k = KEYMAP[e.key];
+  if (k){ keys[k] = true; e.preventDefault(); }
+});
+addEventListener('keyup', e => { const k = KEYMAP[e.key]; if (k) keys[k] = false; });
+addEventListener('blur', () => { keys = {}; if (G && G.phase === 'run') togglePause(); });
+
+// 손가락/마우스 끌기 = 방향키
+function localPt(e){
+  const b = stage.getBoundingClientRect();
+  return { x:(e.clientX - b.left) / b.width * VW, y:(e.clientY - b.top) / b.height * VH };
+}
+stage.addEventListener('pointerdown', e => {
+  if (!G || G.phase !== 'run') return;
+  stage.setPointerCapture(e.pointerId);
+  drag = { o:localPt(e), c:localPt(e) };
+});
+stage.addEventListener('pointermove', e => { if (drag) drag.c = localPt(e); });
+stage.addEventListener('pointerup',   () => { drag = null; });
+stage.addEventListener('pointercancel', () => { drag = null; });
+
+function moveVector(){
+  let vx = (keys.r ? 1 : 0) - (keys.l ? 1 : 0);
+  let vy = (keys.d ? 1 : 0) - (keys.u ? 1 : 0);
+  if (drag){
+    const dx = drag.c.x - drag.o.x, dy = drag.c.y - drag.o.y;
+    const m = Math.hypot(dx, dy);
+    if (m > 14){ vx = dx / m; vy = dy / m; }
+  }
+  const m = Math.hypot(vx, vy);
+  return m ? { x:vx / m, y:vy / m } : { x:0, y:0 };
+}
+
+/* ═══ 잡귀 등장 ═════════════════════════════════════════ */
+function difficulty(){ return 1 + G.t / 60 * 0.62; }
+
+function spawnEnemy(type, forceR){
+  const k = KIND[type], d = difficulty();
+  const a = rand(0, Math.PI * 2);
+  const R = forceR || Math.hypot(VW, VH) / 2 + 70;
+  G.enemies.push({
+    type, x:P.x + Math.cos(a) * R, y:P.y + Math.sin(a) * R,
+    r:k.r, hp:k.hp * d, max:k.hp * d, spd:k.spd * (0.9 + Math.random() * 0.2),
+    dmg:k.dmg, tone:k.tone, xp:k.xp, flash:0, cd:{},
+    wob:rand(0, 6.28), kx:0, ky:0
+  });
+}
+
+function spawnWave(dt){
+  G.spawnClock -= dt;
+  if (G.spawnClock > 0) return;
+  G.spawnClock = Math.max(0.16, 1.05 - G.t / 300);
+
+  const roster = Object.keys(KIND).filter(k => k !== 'boss' && G.t >= KIND[k].from);
+  const n = 1 + Math.floor(G.t / 75);
+  for (let i = 0; i < n; i++) if (G.enemies.length < 260) spawnEnemy(pick(roster));
+
+  if (G.t >= G.bossAt){
+    G.bossAt += 150;
+    spawnEnemy('boss');
+    flash('큰 것이 온다', '#B0332A');
+  }
+}
+
+/* ═══ 피해 처리 ═════════════════════════════════════════ */
+function canHit(e, key, cd){
+  const now = G.t;
+  if (e.cd[key] && now - e.cd[key] < cd) return false;
+  e.cd[key] = now; return true;
+}
+
+function hurt(e, dmg, kx, ky){
+  e.hp -= dmg; e.flash = 0.1;
+  if (kx) { e.kx += kx; e.ky += ky; }
+  G.fx.push({ kind:'num', x:e.x, y:e.y - e.r - 4, v:Math.round(dmg), life:0.55, t:0 });
+  if (e.hp <= 0) kill(e);
+}
+
+function kill(e){
+  e.dead = true;
+  G.kills++;
+  G.fx.push({ kind:'blot', x:e.x, y:e.y, r:e.r, life:0.4, t:0 });
+  const drops = e.type === 'boss' ? 12 : 1;
+  for (let i = 0; i < drops; i++)
+    G.gems.push({ x:e.x + rand(-14,14), y:e.y + rand(-14,14), v:e.xp, r:4, big:e.type==='boss' });
+  if (e.type === 'boss'){ P.hp = Math.min(P.maxHp, P.hp + 40); flash('명줄이 이어졌다', '#2E6A54'); }
+}
+
+/* ═══ 무기 ══════════════════════════════════════════════ */
+function nearest(x, y, maxR){
+  let best = null, bd = maxR ? maxR * maxR : Infinity;
+  for (const e of G.enemies){
+    const d = (e.x-x)*(e.x-x) + (e.y-y)*(e.y-y);
+    if (d < bd){ bd = d; best = e; }
+  }
+  return best;
+}
+
+function runArms(dt){
+  const A = P.arms;
+
+  /* 符 부적 — 가장 가까운 적에게 날린다 */
+  if (A.bujeok){
+    const a = A.bujeok, lv = a.lv;
+    a.t -= dt;
+    if (a.t <= 0){
+      a.t = (1.05 - lv * 0.07) * P.cdMul;
+      const count = 1 + Math.floor(lv / 2);
+      for (let i = 0; i < count; i++){
+        const tgt = nearest(P.x, P.y, 560);
+        const ang = tgt ? Math.atan2(tgt.y - P.y, tgt.x - P.x) + rand(-.12,.12) * i
+                        : Math.atan2(P.face.y, P.face.x);
+        G.shots.push({ kind:'bujeok', x:P.x, y:P.y, vx:Math.cos(ang)*430, vy:Math.sin(ang)*430,
+                       r:8, dmg:(9 + lv * 4) * P.dmgMul, pierce:Math.floor(lv/3), life:1.6, spin:rand(0,6.3) });
+      }
+    }
+  }
+
+  /* 鈴 방울 — 궤도 위성 */
+  if (A.bell){
+    const lv = A.bell.lv;
+    const n = 1 + Math.floor((lv + 1) / 2);
+    const R = 62 + lv * 7;
+    G.orbit += dt * (2.1 + lv * 0.16);
+    for (let i = 0; i < n; i++){
+      const ang = G.orbit + i * (Math.PI * 2 / n);
+      const bx = P.x + Math.cos(ang) * R, by = P.y + Math.sin(ang) * R;
+      A.bell.pos = A.bell.pos || [];
+      A.bell.pos[i] = { x:bx, y:by };
+      for (const e of G.enemies){
+        if ((e.x-bx)**2 + (e.y-by)**2 < (e.r + 11) ** 2 && canHit(e, 'bell' + i, 0.4))
+          hurt(e, (7 + lv * 3.5) * P.dmgMul, (e.x-bx)*0.6, (e.y-by)*0.6);
+      }
+    }
+    A.bell.pos.length = n;
+  }
+
+  /* 陣 진 — 발밑 장판 */
+  if (A.jin){
+    const a = A.jin, lv = a.lv;
+    a.R = (54 + lv * 13);
+    a.t -= dt;
+    if (a.t <= 0){
+      a.t = 0.5 * P.cdMul;
+      for (const e of G.enemies)
+        if (dist2(e, P) < (a.R + e.r) ** 2) hurt(e, (5 + lv * 3) * P.dmgMul, 0, 0);
+      G.fx.push({ kind:'ring', x:P.x, y:P.y, r:a.R, life:0.3, t:0 });
+    }
+  }
+
+  /* 雷 벼락 — 무작위 대상에 낙뢰 */
+  if (A.bolt){
+    const a = A.bolt, lv = a.lv;
+    a.t -= dt;
+    if (a.t <= 0){
+      a.t = (2.4 - lv * 0.18) * P.cdMul;
+      const strikes = 1 + Math.floor(lv / 2), R = 46 + lv * 6;
+      for (let i = 0; i < strikes; i++){
+        const near = G.enemies.filter(e => dist2(e, P) < 420 * 420);
+        if (!near.length) break;
+        const tgt = pick(near);
+        for (const e of G.enemies)
+          if (dist2(e, tgt) < (R + e.r) ** 2) hurt(e, (16 + lv * 7) * P.dmgMul, (e.x-tgt.x)*1.4, (e.y-tgt.y)*1.4);
+        G.fx.push({ kind:'bolt', x:tgt.x, y:tgt.y, r:R, life:0.28, t:0 });
+        G.shake = Math.max(G.shake, 3);
+      }
+    }
+  }
+
+  /* 刃 칼날 — 진행 방향으로 흩뿌린다 */
+  if (A.blade){
+    const a = A.blade, lv = a.lv;
+    a.t -= dt;
+    if (a.t <= 0){
+      a.t = (1.5 - lv * 0.1) * P.cdMul;
+      const n = 2 + lv, base = Math.atan2(P.face.y, P.face.x);
+      for (let i = 0; i < n; i++){
+        const ang = base + (i - (n - 1) / 2) * 0.2;
+        G.shots.push({ kind:'blade', x:P.x, y:P.y, vx:Math.cos(ang)*520, vy:Math.sin(ang)*520,
+                       r:9, dmg:(7 + lv * 3) * P.dmgMul, pierce:1 + Math.floor(lv/2), life:0.85, spin:ang });
+      }
+    }
+  }
+}
+
+/* ═══ 성장 ══════════════════════════════════════════════ */
+function applyPassives(){
+  const p = P.passives;
+  P.spd    = 132 * Math.pow(1.12, p.boot || 0);
+  P.dmgMul = Math.pow(1.14, p.cinn || 0);
+  P.cdMul  = Math.pow(0.91, p.wind || 0);
+  P.pickup = 78 * Math.pow(1.3, p.bowl || 0);
+  P.armor  = p.robe || 0;
+}
+
+function gainXp(v){
+  P.xp += v;
+  while (P.xp >= P.need){
+    P.xp -= P.need;
+    P.lv++;
+    P.need = Math.floor(8 + P.lv * 5 + Math.pow(P.lv, 1.55));
+    offerCards();
+  }
+}
+
+function optionPool(){
+  const out = [];
+  for (const [id, w] of Object.entries(ARMS)){
+    const bag = w.kind === 'arm' ? P.arms : P.passives;
+    const cur = w.kind === 'arm' ? (bag[id] ? bag[id].lv : 0) : (bag[id] || 0);
+    if (cur >= w.max) continue;
+    if (cur === 0 && w.kind === 'arm' && Object.keys(P.arms).length >= 5) continue;
+    out.push({ id, w, next:cur + 1 });
+  }
+  return out;
+}
+
+function takeCard(id){
+  const w = ARMS[id];
+  if (w.kind === 'arm'){
+    if (P.arms[id]) P.arms[id].lv++;
+    else P.arms[id] = { lv:1, t:0 };
+  } else {
+    P.passives[id] = (P.passives[id] || 0) + 1;
+    if (id === 'life'){ P.maxHp += 20; P.hp = Math.min(P.maxHp, P.hp + 20); }
+  }
+  applyPassives();
+  syncBelt();
+  veil.hidden = true;
+  G.phase = 'run';
+}
+
+function offerCards(){
+  const pool = optionPool();
+  if (!pool.length){ P.hp = Math.min(P.maxHp, P.hp + 25); return; }
+
+  const picks = [];
+  const bag = pool.slice();
+  while (picks.length < 3 && bag.length) picks.push(bag.splice(Math.floor(Math.random() * bag.length), 1)[0]);
+
+  G.phase = 'level';
+  veil.hidden = false;
+  veil.innerHTML = `<div>
+      <h2>부적을 고르시오</h2>
+      <div class="picks">${picks.map(p => `
+        <button class="card" data-id="${p.id}" type="button">
+          <span class="glyph">${p.w.glyph}</span>
+          <span class="name">${p.w.name}</span>
+          <span class="rank">${p.next === 1 ? '새 부적' : '제 ' + p.next + '급'}</span>
+          <span class="desc">${p.w.desc(p.next)}</span>
+        </button>`).join('')}</div>
+    </div>`;
+  veil.querySelectorAll('.card').forEach(b => b.onclick = () => takeCard(b.dataset.id));
+  veil.querySelector('.card').focus();
+}
+
+function syncBelt(){
+  const items = [
+    ...Object.entries(P.arms).map(([id, a]) => ({ id, lv:a.lv, cls:'' })),
+    ...Object.entries(P.passives).map(([id, lv]) => ({ id, lv, cls:' passive' }))
+  ];
+  belt.innerHTML = items.map(o =>
+    `<div class="slot${o.cls}"><b>${ARMS[o.id].glyph}</b><i>${o.lv}</i></div>`).join('');
+}
+
+/* ═══ 갱신 ══════════════════════════════════════════════ */
+function update(dt){
+  G.t += dt;
+  P.invuln = Math.max(0, P.invuln - dt);
+  G.shake = Math.max(0, G.shake - dt * 22);
+
+  const mv = moveVector();
+  if (mv.x || mv.y) P.face = mv;
+  P.x += mv.x * P.spd * dt;
+  P.y += mv.y * P.spd * dt;
+
+  spawnWave(dt);
+  runArms(dt);
+
+  /* 잡귀 이동 · 접촉 */
+  const cullR = (Math.hypot(VW, VH) / 2 + 420) ** 2;
+  for (const e of G.enemies){
+    const dx = P.x - e.x, dy = P.y - e.y;
+    const m = Math.hypot(dx, dy) || 1;
+    e.wob += dt * 5;
+    e.x += (dx / m) * e.spd * dt + e.kx * dt;
+    e.y += (dy / m) * e.spd * dt + e.ky * dt;
+    e.kx *= 0.86; e.ky *= 0.86;
+    e.flash = Math.max(0, e.flash - dt);
+
+    if (m < e.r + P.r && P.invuln <= 0){
+      const dmg = Math.max(1, e.dmg - P.armor);
+      P.hp -= dmg; P.invuln = 0.55; G.shake = 6;
+      G.fx.push({ kind:'num', x:P.x, y:P.y - 22, v:dmg, life:0.6, t:0, mine:true });
+      if (P.hp <= 0){ finish(false); return; }
+    }
+    if (dist2(e, P) > cullR) e.dead = true;
+  }
+
+  /* 겹침 완화 — 표본만 밀어낸다 */
+  for (let i = 0; i < G.enemies.length; i++){
+    const a = G.enemies[i];
+    for (let k = 1; k <= 2; k++){
+      const b = G.enemies[(i + k * 7) % G.enemies.length];
+      if (!b || a === b) continue;
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+      const min = a.r + b.r;
+      if (d > 0 && d < min){
+        const push = (min - d) * 0.3;
+        b.x += dx / d * push; b.y += dy / d * push;
+        a.x -= dx / d * push; a.y -= dy / d * push;
+      }
+    }
+  }
+
+  /* 날아가는 것 */
+  for (const s of G.shots){
+    s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt; s.spin += dt * 9;
+    if (s.life <= 0){ s.dead = true; continue; }
+    for (const e of G.enemies){
+      if (e.dead) continue;
+      if ((e.x-s.x)**2 + (e.y-s.y)**2 < (e.r + s.r) ** 2 && canHit(e, 'shot' + (s.uid || (s.uid = Math.random())), 9)){
+        hurt(e, s.dmg, s.vx * 0.18, s.vy * 0.18);
+        if (s.pierce-- <= 0){ s.dead = true; break; }
+      }
+    }
+  }
+
+  /* 혼백 수거 */
+  for (const g of G.gems){
+    const d = Math.hypot(P.x - g.x, P.y - g.y);
+    if (d < P.pickup){
+      const pull = clamp((P.pickup - d) / P.pickup, 0.1, 1) * 620;
+      g.x += (P.x - g.x) / d * pull * dt;
+      g.y += (P.y - g.y) / d * pull * dt;
+    }
+    if (d < 16){ g.dead = true; gainXp(g.v); }
+  }
+
+  /* 잔상 */
+  for (const f of G.fx){ f.t += dt; if (f.t >= f.life) f.dead = true; }
+
+  G.enemies = G.enemies.filter(e => !e.dead);
+  G.shots   = G.shots.filter(s => !s.dead);
+  G.gems    = G.gems.filter(g => !g.dead);
+  G.fx      = G.fx.filter(f => !f.dead);
+
+  if (G.t >= RUN_TIME) finish(true);
+  syncHud();
+}
+
+function syncHud(){
+  const m = Math.floor(G.t / 60), s = Math.floor(G.t % 60);
+  document.getElementById('clock').textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  document.getElementById('tally').textContent = `퇴치 ${G.kills}`;
+  document.getElementById('lvtag').textContent = `${P.lv}급`;
+  document.getElementById('xpfill').style.width = clamp(P.xp / P.need * 100, 0, 100) + '%';
+  document.getElementById('hpfill').style.width = clamp(P.hp / P.maxHp * 100, 0, 100) + '%';
+}
+
+/* ═══ 그리기 ════════════════════════════════════════════ */
+function toS(x, y){ return { x:x - P.x + VW / 2, y:y - P.y + VH / 2 }; }
+
+function inkBlob(x, y, r, tone, wob, flash){
+  ctx.fillStyle = flash > 0 ? '#B0332A' : tone;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, 6.283);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + Math.cos(wob) * r * .5, y + Math.sin(wob * 1.3) * r * .5, r * .55, 0, 6.283);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x - Math.cos(wob * .8) * r * .45, y + Math.sin(wob) * r * .4, r * .42, 0, 6.283);
+  ctx.fill();
+  // 눈
+  ctx.fillStyle = '#D6C8A0';
+  ctx.beginPath(); ctx.arc(x - r*.28, y - r*.16, r*.13, 0, 6.283); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + r*.28, y - r*.16, r*.13, 0, 6.283); ctx.fill();
+}
+
+function draw(){
+  const sx = G.shake ? rand(-G.shake, G.shake) : 0;
+  const sy = G.shake ? rand(-G.shake, G.shake) : 0;
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  // 종이 바탕 + 접힌 자국
+  ctx.fillStyle = '#D6C8A0';
+  ctx.fillRect(-20, -20, VW + 40, VH + 40);
+  const cell = 120;
+  ctx.strokeStyle = 'rgba(25,23,18,.07)'; ctx.lineWidth = 1;
+  const ox = -((P.x % cell) + cell) % cell, oy = -((P.y % cell) + cell) % cell;
+  ctx.beginPath();
+  for (let x = ox; x < VW + cell; x += cell){ ctx.moveTo(x, 0); ctx.lineTo(x, VH); }
+  for (let y = oy; y < VH + cell; y += cell){ ctx.moveTo(0, y); ctx.lineTo(VW, y); }
+  ctx.stroke();
+
+  // 진
+  if (P.arms.jin){
+    const R = P.arms.jin.R || 60;
+    ctx.strokeStyle = 'rgba(176,51,42,.5)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(VW/2, VH/2, R, 0, 6.283); ctx.stroke();
+    ctx.fillStyle = 'rgba(176,51,42,.09)'; ctx.fill();
+  }
+
+  // 혼백
+  for (const g of G.gems){
+    const p = toS(g.x, g.y);
+    ctx.fillStyle = g.big ? '#9C7A2A' : '#2E6A54';
+    ctx.beginPath(); ctx.arc(p.x, p.y, g.big ? 7 : 4.5, 0, 6.283); ctx.fill();
+  }
+
+  // 잔상 (아래층)
+  for (const f of G.fx){
+    const p = toS(f.x, f.y), k = 1 - f.t / f.life;
+    if (f.kind === 'ring'){
+      ctx.strokeStyle = `rgba(176,51,42,${k * .7})`; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(p.x, p.y, f.r * (1 + (1 - k) * .12), 0, 6.283); ctx.stroke();
+    }
+    if (f.kind === 'bolt'){
+      ctx.fillStyle = `rgba(156,122,42,${k * .45})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, f.r, 0, 6.283); ctx.fill();
+      ctx.strokeStyle = `rgba(25,23,18,${k})`; ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(p.x - 8, p.y - 60); ctx.lineTo(p.x + 5, p.y - 22);
+      ctx.lineTo(p.x - 6, p.y - 16); ctx.lineTo(p.x + 4, p.y);
+      ctx.stroke();
+    }
+    if (f.kind === 'blot'){
+      ctx.fillStyle = `rgba(25,23,18,${k * .3})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, f.r * (1 + (1 - k)), 0, 6.283); ctx.fill();
+    }
+  }
+
+  // 잡귀
+  for (const e of G.enemies){
+    const p = toS(e.x, e.y);
+    if (p.x < -60 || p.x > VW + 60 || p.y < -60 || p.y > VH + 60) continue;
+    inkBlob(p.x, p.y, e.r, e.tone, e.wob, e.flash);
+    if (e.type === 'boss'){
+      ctx.strokeStyle = 'rgba(176,51,42,.8)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(p.x, p.y, e.r + 8, -1.4, -1.4 + 6.283 * (e.hp / e.max)); ctx.stroke();
+    }
+  }
+
+  // 방울
+  if (P.arms.bell && P.arms.bell.pos){
+    for (const b of P.arms.bell.pos){
+      const p = toS(b.x, b.y);
+      ctx.fillStyle = '#9C7A2A'; ctx.beginPath(); ctx.arc(p.x, p.y, 9, 0, 6.283); ctx.fill();
+      ctx.strokeStyle = '#191712'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+  }
+
+  // 날아가는 것
+  for (const s of G.shots){
+    const p = toS(s.x, s.y);
+    ctx.save(); ctx.translate(p.x, p.y);
+    if (s.kind === 'bujeok'){
+      ctx.rotate(Math.atan2(s.vy, s.vx) + Math.PI / 2);
+      ctx.fillStyle = '#E4D9B8'; ctx.fillRect(-6, -11, 12, 22);
+      ctx.strokeStyle = '#B0332A'; ctx.lineWidth = 1.6;
+      ctx.strokeRect(-6, -11, 12, 22);
+      ctx.beginPath(); ctx.moveTo(-3, -5); ctx.lineTo(3, 1); ctx.moveTo(3, -5); ctx.lineTo(-3, 1); ctx.stroke();
+    } else {
+      ctx.rotate(s.spin);
+      ctx.strokeStyle = '#191712'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(-11, 0); ctx.lineTo(11, 0); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // 술사 — 붉은 인장
+  const blink = P.invuln > 0 && Math.floor(P.invuln * 20) % 2 === 0;
+  if (!blink){
+    ctx.fillStyle = '#B0332A';
+    ctx.fillRect(VW/2 - 11, VH/2 - 11, 22, 22);
+    ctx.strokeStyle = '#191712'; ctx.lineWidth = 2;
+    ctx.strokeRect(VW/2 - 11, VH/2 - 11, 22, 22);
+    ctx.fillStyle = '#E4D9B8';
+    ctx.fillRect(VW/2 - 5, VH/2 - 5, 10, 3);
+    ctx.fillRect(VW/2 - 5, VH/2 + 2, 10, 3);
+    ctx.fillStyle = 'rgba(25,23,18,.5)';
+    ctx.fillRect(VW/2 - 2 + P.face.x * 15, VH/2 - 2 + P.face.y * 15, 4, 4);
+  }
+
+  // 숫자 · 알림
+  ctx.textAlign = 'center';
+  for (const f of G.fx){
+    const p = toS(f.x, f.y), k = 1 - f.t / f.life;
+    if (f.kind === 'num'){
+      ctx.font = '600 15px ui-monospace, Menlo, monospace';
+      ctx.fillStyle = f.mine ? `rgba(176,51,42,${k})` : `rgba(25,23,18,${k})`;
+      ctx.fillText(f.v, p.x, p.y - (1 - k) * 26);
+    }
+    if (f.kind === 'toast'){
+      ctx.font = '400 26px "Nanum Myeongjo", "AppleMyungjo", Batang, serif';
+      ctx.fillStyle = f.tone.replace(')', `,${k})`).replace('rgb', 'rgba');
+      ctx.globalAlpha = k;
+      ctx.fillStyle = f.tone;
+      ctx.fillText(f.v, VW / 2, VH * 0.3);
+      ctx.globalAlpha = 1;
+    }
+  }
+  ctx.restore();
+}
+
+function flash(text, tone){ G.fx.push({ kind:'toast', v:text, tone, x:0, y:0, life:1.6, t:0 }); }
+
+/* ═══ 장면 ══════════════════════════════════════════════ */
+function title(){
+  reset();
+  veil.hidden = false;
+  veil.innerHTML = `<div>
+      <h2>부 적</h2>
+      <p>잡귀가 사방에서 몰려온다. 부적은 저절로 나가니, 그대는 피하기만 하면 된다.
+         혼백을 모아 급을 올리고 새 부적을 받으시오. 10분을 버티면 끝난다.</p>
+      <p style="margin-top:10px;font-size:13px">
+        <kbd>WASD</kbd> <kbd>↑↓←→</kbd> 또는 화면 끌기로 이동 · <kbd>Esc</kbd> 멈춤
+      </p>
+      <button class="go" id="go" type="button">시작</button>
+    </div>`;
+  document.getElementById('go').onclick = begin;
+  document.getElementById('go').focus();
+  draw();
+}
+
+function begin(){
+  reset();
+  applyPassives();
+  G.phase = 'run';
+  veil.hidden = true;
+  syncHud();
+}
+
+function togglePause(){
+  if (G.phase === 'run'){
+    G.phase = 'pause';
+    veil.hidden = false;
+    veil.innerHTML = `<div><h2>멈춤</h2><p>숨을 고르시오.</p>
+      <button class="go" id="go" type="button">이어서</button></div>`;
+    document.getElementById('go').onclick = togglePause;
+    document.getElementById('go').focus();
+  } else if (G.phase === 'pause'){
+    G.phase = 'run'; veil.hidden = true;
+  }
+}
+
+function finish(won){
+  G.phase = 'over';
+  const m = Math.floor(G.t / 60), s = Math.floor(G.t % 60);
+  veil.hidden = false;
+  veil.innerHTML = `<div>
+      <h2>${won ? '승 천' : '명줄이 끊겼다'}</h2>
+      <p>${won ? '10분을 온전히 버텼다. 잡귀가 물러간다.' : '다시 부적을 쥐고 처음부터.'}</p>
+      <dl class="ledger">
+        <div><dt>버틴 시간</dt><dd>${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}</dd></div>
+        <div><dt>퇴치</dt><dd>${G.kills}</dd></div>
+        <div><dt>급수</dt><dd>${P.lv}급</dd></div>
+        <div><dt>지닌 부적</dt><dd>${Object.keys(P.arms).length + Object.keys(P.passives).length}</dd></div>
+      </dl>
+      <button class="go" id="go" type="button">다시</button>
+    </div>`;
+  document.getElementById('go').onclick = begin;
+  document.getElementById('go').focus();
+}
+
+/* ═══ 심장 박동 ═════════════════════════════════════════ */
+let last = 0;
+function loop(now){
+  const dt = last ? Math.min((now - last) / 1000, 0.05) : 0;
+  last = now;
+  if (G.phase === 'run') update(dt);
+  if (G.phase !== 'title' || true) draw();
+  requestAnimationFrame(loop);
+}
+
+title();
+requestAnimationFrame(loop);
+</script>
