@@ -199,6 +199,14 @@ const dist2 = (a, b) => { const dx = a.x - b.x, dy = a.y - b.y; return dx*dx + d
 const ARMS = {
   bujeok:{ glyph:'符', name:'부적', max:6, kind:'arm',
     desc:l => l===1 ? '가장 가까운 잡귀에게 부적을 날린다' : `날리는 부적 ${1+Math.floor(l/2)}장 · 피해 증가` },
+  twoTarget:{ glyph:'雙', name:'쌍표 부적', max:1, kind:'arm',
+    desc:()=>'동시에 2개의 표적을 향해 부적을 발사한다' },
+  threeTarget:{ glyph:'三', name:'삼표 부적', max:1, kind:'arm',
+    desc:()=>'동시에 3개의 표적을 향해 부적을 발사한다' },
+  doubleRate:{ glyph:'速', name:'배속 부적', max:1, kind:'arm',
+    desc:()=>'부적 발사 빈도가 2배가 된다' },
+  tripleRate:{ glyph:'疾', name:'삼배 부적', max:1, kind:'arm',
+    desc:()=>'부적 발사 빈도가 3배가 된다' },
   bell:{ glyph:'鈴', name:'방울', max:6, kind:'arm',
     desc:l => l===1 ? '몸 둘레를 도는 방울이 잡귀를 친다' : `방울 ${1+Math.floor((l+1)/2)}개 · 회전 강화` },
   jin:{ glyph:'陣', name:'진', max:6, kind:'arm',
@@ -337,13 +345,12 @@ function kill(e){
 }
 
 /* ═══ 무기 ══════════════════════════════════════════════ */
-function nearest(x, y, maxR){
-  let best = null, bd = maxR ? maxR * maxR : Infinity;
-  for (const e of G.enemies){
-    const d = (e.x-x)*(e.x-x) + (e.y-y)*(e.y-y);
-    if (d < bd){ bd = d; best = e; }
-  }
-  return best;
+function nearestTargets(x, y, maxR, count){
+  const maxD = maxR * maxR;
+  return G.enemies
+    .filter(e => !e.dead && (e.x-x)*(e.x-x) + (e.y-y)*(e.y-y) < maxD)
+    .sort((a, b) => dist2(a, { x, y }) - dist2(b, { x, y }))
+    .slice(0, count);
 }
 
 function runArms(dt){
@@ -354,10 +361,13 @@ function runArms(dt){
     const a = A.bujeok, lv = a.lv;
     a.t -= dt;
     if (a.t <= 0){
-      a.t = (1.05 - lv * 0.07) * P.cdMul;
+      const rate = A.tripleRate ? 3 : A.doubleRate ? 2 : 1;
+      a.t = (1.05 - lv * 0.07) * P.cdMul / rate;
       const count = 1 + Math.floor(lv / 2);
+      const targets = nearestTargets(P.x, P.y, 560,
+        A.threeTarget ? 3 : A.twoTarget ? 2 : 1);
       for (let i = 0; i < count; i++){
-        const tgt = nearest(P.x, P.y, 560);
+        const tgt = targets.length ? targets[i % targets.length] : null;
         const ang = tgt ? Math.atan2(tgt.y - P.y, tgt.x - P.x) + rand(-.12,.12) * i
                         : Math.atan2(P.face.y, P.face.x);
         G.shots.push({ kind:'bujeok', x:P.x, y:P.y, vx:Math.cos(ang)*430, vy:Math.sin(ang)*430,
@@ -459,6 +469,8 @@ function optionPool(){
     const bag = w.kind === 'arm' ? P.arms : P.passives;
     const cur = w.kind === 'arm' ? (bag[id] ? bag[id].lv : 0) : (bag[id] || 0);
     if (cur >= w.max) continue;
+    if (id === 'twoTarget' && P.arms.threeTarget) continue;
+    if (id === 'doubleRate' && P.arms.tripleRate) continue;
     if (cur === 0 && w.kind === 'arm' && Object.keys(P.arms).length >= 5) continue;
     out.push({ id, w, next:cur + 1 });
   }
