@@ -199,6 +199,8 @@ const dist2 = (a, b) => { const dx = a.x - b.x, dy = a.y - b.y; return dx*dx + d
 const ARMS = {
   bujeok:{ glyph:'符', name:'부적', max:6, kind:'arm',
     desc:l => l===1 ? '가장 가까운 잡귀에게 부적을 날린다' : `날리는 부적 ${1+Math.floor(l/2)}장 · 피해 증가` },
+  chain:{ glyph:'連', name:'연쇄 부적', max:5, kind:'arm',
+    desc:l => `적중 후 ${1 + Math.floor((l + 1) / 2)}회 튕김 · 튕길수록 피해 감소` },
   twoTarget:{ glyph:'雙', name:'쌍표 부적', max:1, kind:'arm',
     desc:()=>'동시에 2개의 표적을 향해 부적을 발사한다' },
   threeTarget:{ glyph:'三', name:'삼표 부적', max:1, kind:'arm',
@@ -366,6 +368,21 @@ function nearestTargets(x, y, maxR, count){
     .slice(0, count);
 }
 
+function chainAttack(start, dmg, jumps, maxR){
+  let from = start;
+  const seen = new Set([start]);
+  for (let i = 0; i < jumps; i++){
+    const next = G.enemies
+      .filter(e => !e.dead && !seen.has(e) && dist2(e, from) < maxR * maxR)
+      .sort((a, b) => dist2(a, from) - dist2(b, from))[0];
+    if (!next) break;
+    seen.add(next);
+    G.fx.push({ kind:'chain', x:from.x, y:from.y, x2:next.x, y2:next.y, life:0.2, t:0 });
+    hurt(next, dmg * (0.62 - i * 0.06), (next.x-from.x)*0.35, (next.y-from.y)*0.35);
+    from = next;
+  }
+}
+
 function runArms(dt){
   const A = P.arms;
 
@@ -386,6 +403,21 @@ function runArms(dt){
         G.shots.push({ kind:'bujeok', x:P.x, y:P.y, vx:Math.cos(ang)*430, vy:Math.sin(ang)*430,
                        r:8, dmg:(9 + lv * 4) * P.dmgMul, pierce:Math.floor(lv/3), life:1.6, spin:rand(0,6.3) });
       }
+    }
+  }
+
+  /* 連 연쇄 부적 — 적중한 잡귀에서 가까운 잡귀로 튕긴다 */
+  if (A.chain){
+    const a = A.chain, lv = a.lv;
+    a.t -= dt;
+    if (a.t <= 0){
+      const rate = A.tripleRate ? 3 : A.doubleRate ? 2 : 1;
+      a.t = Math.max(0.42, (1.28 - lv * 0.07) * P.cdMul / rate);
+      const tgt = nearestTargets(P.x, P.y, 560, 1)[0];
+      const ang = tgt ? Math.atan2(tgt.y - P.y, tgt.x - P.x) : Math.atan2(P.face.y, P.face.x);
+      G.shots.push({ kind:'chain', x:P.x, y:P.y, vx:Math.cos(ang)*410, vy:Math.sin(ang)*410,
+                     r:8, dmg:(11 + lv * 4) * P.dmgMul, pierce:0, life:1.6, spin:rand(0,6.3),
+                     jumps:1 + Math.floor((lv + 1) / 2), chainRange:142 + lv * 12 });
     }
   }
 
@@ -657,7 +689,11 @@ function update(dt){
       if (e.dead) continue;
       if ((e.x-s.x)**2 + (e.y-s.y)**2 < (e.r + s.r) ** 2 && canHit(e, 'shot' + (s.uid || (s.uid = Math.random())), 9)){
         hurt(e, s.dmg, s.vx * 0.18, s.vy * 0.18);
-        if (P.arms.twin && !s.split){
+        if (s.kind === 'chain' && !s.chained){
+          s.chained = true;
+          chainAttack(e, s.dmg, s.jumps, s.chainRange);
+        }
+        if (P.arms.twin && !s.split && s.kind !== 'chain'){
           const lv = P.arms.twin.lv;
           const ang = Math.atan2(s.vy, s.vx), speed = Math.hypot(s.vx, s.vy) * 0.86;
           const splitDmg = s.dmg * (0.48 + lv * 0.04);
@@ -762,6 +798,12 @@ function draw(){
   // 잔상 (아래층)
   for (const f of G.fx){
     const p = toS(f.x, f.y), k = 1 - f.t / f.life;
+    if (f.kind === 'chain'){
+      const a = toS(f.x, f.y), b = toS(f.x2, f.y2);
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      ctx.strokeStyle = `rgba(156,122,42,${k * .9})`; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(mx + (b.y-a.y) * .12, my - (b.x-a.x) * .12); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
     if (f.kind === 'ring'){
       ctx.strokeStyle = `rgba(176,51,42,${k * .7})`; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(p.x, p.y, f.r * (1 + (1 - k) * .12), 0, 6.283); ctx.stroke();
@@ -818,10 +860,10 @@ function draw(){
   for (const s of G.shots){
     const p = toS(s.x, s.y);
     ctx.save(); ctx.translate(p.x, p.y);
-    if (s.kind === 'bujeok'){
+    if (s.kind === 'bujeok' || s.kind === 'chain'){
       ctx.rotate(Math.atan2(s.vy, s.vx) + Math.PI / 2);
       ctx.fillStyle = '#E4D9B8'; ctx.fillRect(-6, -11, 12, 22);
-      ctx.strokeStyle = '#B0332A'; ctx.lineWidth = 1.6;
+      ctx.strokeStyle = s.kind === 'chain' ? '#9C7A2A' : '#B0332A'; ctx.lineWidth = 1.6;
       ctx.strokeRect(-6, -11, 12, 22);
       ctx.beginPath(); ctx.moveTo(-3, -5); ctx.lineTo(3, 1); ctx.moveTo(3, -5); ctx.lineTo(-3, 1); ctx.stroke();
     } else {
